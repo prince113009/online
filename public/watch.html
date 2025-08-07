@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Watch Movie</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css"/>
+  <style>
+    body { margin: 0; background: black; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    video { width: 90%; height: auto; max-height: 95vh; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <video id="player" playsinline controls>
+    <source src="" type="video/mp4" />
+  </video>
+  <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+  <script>
+    const player = new Plyr('#player');
+    const urlParams = new URLSearchParams(window.location.search);
+    const videoUrl = urlParams.get('url');
+    if (videoUrl) {
+      document.querySelector('source').src = decodeURIComponent(videoUrl);
+      document.querySelector('#player').load();
+    } else {
+      document.body.innerHTML = "<h2 style='color:white'>Invalid or missing video URL.</h2>";
+    }
+  </script>
+</body>
+</html>
