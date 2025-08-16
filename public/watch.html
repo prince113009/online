@@ -2,29 +2,257 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Watch Movie</title>
+  <title>Ultimate Movie Player</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css"/>
   <style>
-    body { margin: 0; background: black; display: flex; justify-content: center; align-items: center; height: 100vh; }
-    video { width: 90%; height: auto; max-height: 95vh; border-radius: 10px; }
+    body {
+      margin: 0;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+      transition: background 0.3s;
+    }
+    #player {
+      width: 90%;
+      max-width: 1200px;
+      max-height: 95vh;
+      border-radius: 12px;
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
+    }
+    .plyr {
+      border-radius: 12px;
+    }
+    #btn-container {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .custom-btn {
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: #ff3d3d;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      border: none;
+      transition: 0.3s;
+    }
+    .custom-btn:hover {
+      background: #e60000;
+    }
+    #stats-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.6);
+      color: #0f0;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: monospace;
+      display: none;
+    }
   </style>
 </head>
 <body>
-  <video id="player" playsinline controls>
-    <source src="" type="video/mp4" />
-  </video>
+
+  <video id="player" playsinline controls></video>
+
+  <div id="btn-container">
+    <button id="download-btn" class="custom-btn" style="display:none;">⬇ Download</button>
+    <button id="screenshot-btn" class="custom-btn">📸 Screenshot</button>
+    <button id="theater-btn" class="custom-btn">🎬 Theater</button>
+    <button id="mirror-btn" class="custom-btn">🔄 Mirror</button>
+    <button id="theme-btn" class="custom-btn">🌗 Theme</button>
+    <button id="loop-btn" class="custom-btn">🔁 Loop A-B</button>
+    <button id="bookmark-btn" class="custom-btn">🔖 Bookmark</button>
+    <button id="stats-btn" class="custom-btn">📊 Stats</button>
+  </div>
+
+  <div id="stats-overlay"></div>
+
+  <!-- Plyr -->
   <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+  <!-- HLS.js -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <!-- DASH.js -->
+  <script src="https://cdn.jsdelivr.net/npm/dashjs/dist/dash.all.min.js"></script>
+  <!-- Chromecast SDK -->
+  <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+
   <script>
-    const player = new Plyr('#player');
+    const video = document.getElementById('player');
+    const downloadBtn = document.getElementById('download-btn');
+    const screenshotBtn = document.getElementById('screenshot-btn');
+    const theaterBtn = document.getElementById('theater-btn');
+    const mirrorBtn = document.getElementById('mirror-btn');
+    const themeBtn = document.getElementById('theme-btn');
+    const loopBtn = document.getElementById('loop-btn');
+    const bookmarkBtn = document.getElementById('bookmark-btn');
+    const statsBtn = document.getElementById('stats-btn');
+    const statsOverlay = document.getElementById('stats-overlay');
+
+    let isMirrored = false, isTheater = false, isDark = true;
+    let loopStart = null, loopEnd = null;
+    let bookmarks = [];
+    let statsVisible = false;
+
+    const player = new Plyr(video, {
+      controls: [
+        'play-large','rewind','play','fast-forward',
+        'progress','current-time','duration',
+        'mute','volume','captions','settings',
+        'pip','airplay','fullscreen'
+      ],
+      ratio: '16:9',
+      storage: { enabled: true, key: 'plyr-player' }
+    });
+
     const urlParams = new URLSearchParams(window.location.search);
     const videoUrl = urlParams.get('url');
+    const subUrl = urlParams.get('sub');
+
     if (videoUrl) {
-      document.querySelector('source').src = decodeURIComponent(videoUrl);
-      document.querySelector('#player').load();
-    } else {
-      document.body.innerHTML = "<h2 style='color:white'>Invalid or missing video URL.</h2>";
+      const decodedUrl = decodeURIComponent(videoUrl);
+
+      const downloadableExt = ['.mp4','.webm','.ogg','.mkv','.avi','.mov','.flv','.wmv'];
+      if (downloadableExt.some(ext => decodedUrl.toLowerCase().endsWith(ext))) {
+        downloadBtn.style.display = 'block';
+        downloadBtn.onclick = () => {
+          const a = document.createElement('a');
+          a.href = decodedUrl;
+          a.download = decodedUrl.split('/').pop();
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        };
+      }
+
+      if (decodedUrl.endsWith('.m3u8')) {
+        if (Hls.isSupported()) {
+          const hls = new Hls({ maxBufferLength: 60 });
+          hls.loadSource(decodedUrl);
+          hls.attachMedia(video);
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = decodedUrl;
+        }
+      } else if (decodedUrl.endsWith('.mpd')) {
+        const dash = dashjs.MediaPlayer().create();
+        dash.initialize(video, decodedUrl, true);
+      } else {
+        video.src = decodedUrl;
+      }
+
+      if (subUrl) {
+        const track = document.createElement('track');
+        track.kind = 'subtitles';
+        track.label = 'Subs';
+        track.srclang = 'en';
+        track.src = decodeURIComponent(subUrl);
+        track.default = true;
+        video.appendChild(track);
+      }
     }
+
+    // Screenshot
+    screenshotBtn.onclick = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      const link = document.createElement('a');
+      link.download = 'screenshot.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+
+    // Theater mode
+    theaterBtn.onclick = () => {
+      isTheater = !isTheater;
+      document.body.style.background = isTheater ? "#111" : "#000";
+    };
+
+    // Mirror video
+    mirrorBtn.onclick = () => {
+      isMirrored = !isMirrored;
+      video.style.transform = isMirrored ? "scaleX(-1)" : "scaleX(1)";
+    };
+
+    // Dark/Light Theme
+    themeBtn.onclick = () => {
+      isDark = !isDark;
+      document.body.style.background = isDark ? "#000" : "#fff";
+    };
+
+    // Loop A-B
+    loopBtn.onclick = () => {
+      if (!loopStart) {
+        loopStart = video.currentTime;
+        alert("Loop start set at " + loopStart.toFixed(1) + "s");
+      } else if (!loopEnd) {
+        loopEnd = video.currentTime;
+        alert("Loop end set at " + loopEnd.toFixed(1) + "s");
+      } else {
+        loopStart = loopEnd = null;
+        alert("Loop cleared");
+      }
+    };
+    video.addEventListener('timeupdate', () => {
+      if (loopStart && loopEnd && video.currentTime >= loopEnd) {
+        video.currentTime = loopStart;
+      }
+    });
+
+    // Bookmarks
+    bookmarkBtn.onclick = () => {
+      bookmarks.push(video.currentTime);
+      alert("Bookmarked at " + video.currentTime.toFixed(1) + "s");
+    };
+
+    // Stats Overlay
+    statsBtn.onclick = () => {
+      statsVisible = !statsVisible;
+      statsOverlay.style.display = statsVisible ? "block" : "none";
+    };
+    setInterval(() => {
+      if (statsVisible) {
+        statsOverlay.innerText =
+          `Time: ${video.currentTime.toFixed(1)}s\n` +
+          `Buffered: ${((video.buffered.length && video.buffered.end(0)) || 0).toFixed(1)}s\n` +
+          `Volume: ${(video.volume*100).toFixed(0)}%\n` +
+          `Resolution: ${video.videoWidth}x${video.videoHeight}\n` +
+          `Rate: ${video.playbackRate}x`;
+      }
+    }, 500);
+
+    // Resume playback
+    video.addEventListener("loadedmetadata", () => {
+      const savedTime = localStorage.getItem("resumeTime");
+      if (savedTime) video.currentTime = savedTime;
+    });
+    video.addEventListener("timeupdate", () => {
+      localStorage.setItem("resumeTime", video.currentTime);
+    });
+
+    // Drag & Drop support
+    document.body.addEventListener("dragover", e => e.preventDefault());
+    document.body.addEventListener("drop", e => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        const url = URL.createObjectURL(file);
+        video.src = url;
+        player.play();
+      }
+    });
   </script>
+
 </body>
 </html>
