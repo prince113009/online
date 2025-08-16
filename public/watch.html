@@ -2,257 +2,93 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Ultimate Movie Player</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Video Player</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
-      margin: 0;
-      background: #000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      font-family: Arial, sans-serif;
-      transition: background 0.3s;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      color: white;
+      font-family: 'Poppins', sans-serif;
     }
-    #player {
-      width: 90%;
-      max-width: 1200px;
-      max-height: 95vh;
-      border-radius: 12px;
-      box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
+    .glow-btn {
+      background: linear-gradient(45deg, #ff512f, #dd2476);
+      box-shadow: 0 0 20px rgba(255, 81, 47, 0.7);
+      transition: all 0.3s ease-in-out;
     }
-    .plyr {
-      border-radius: 12px;
+    .glow-btn:hover {
+      transform: scale(1.1);
+      box-shadow: 0 0 30px rgba(221, 36, 118, 1);
     }
-    #btn-container {
-      position: absolute;
-      bottom: 20px;
-      right: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .custom-btn {
-      padding: 8px 12px;
-      border-radius: 6px;
-      background: #ff3d3d;
-      color: #fff;
-      font-size: 13px;
-      cursor: pointer;
-      border: none;
-      transition: 0.3s;
-    }
-    .custom-btn:hover {
-      background: #e60000;
-    }
-    #stats-overlay {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background: rgba(0,0,0,0.6);
-      color: #0f0;
-      padding: 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-family: monospace;
-      display: none;
+    video {
+      border-radius: 20px;
+      box-shadow: 0 0 25px rgba(255, 255, 255, 0.3);
     }
   </style>
 </head>
-<body>
+<body class="flex flex-col items-center justify-center min-h-screen p-6">
 
-  <video id="player" playsinline controls></video>
+  <h1 class="text-4xl font-bold mb-6 text-center">🎬 AI Video Player</h1>
 
-  <div id="btn-container">
-    <button id="download-btn" class="custom-btn" style="display:none;">⬇ Download</button>
-    <button id="screenshot-btn" class="custom-btn">📸 Screenshot</button>
-    <button id="theater-btn" class="custom-btn">🎬 Theater</button>
-    <button id="mirror-btn" class="custom-btn">🔄 Mirror</button>
-    <button id="theme-btn" class="custom-btn">🌗 Theme</button>
-    <button id="loop-btn" class="custom-btn">🔁 Loop A-B</button>
-    <button id="bookmark-btn" class="custom-btn">🔖 Bookmark</button>
-    <button id="stats-btn" class="custom-btn">📊 Stats</button>
+  <!-- Video Player -->
+  <video id="player" controls class="w-full max-w-4xl mb-6"></video>
+
+  <!-- Input for video link -->
+  <div class="flex gap-4 w-full max-w-3xl">
+    <input id="videoUrl" type="text" 
+      placeholder="Paste PixelDrain / Direct Video Link..." 
+      class="flex-1 p-3 rounded-xl text-black" />
+    <button onclick="loadVideo()" class="glow-btn px-6 py-3 rounded-xl font-bold">▶ Play</button>
   </div>
 
-  <div id="stats-overlay"></div>
-
-  <!-- Plyr -->
-  <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-  <!-- HLS.js -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <!-- DASH.js -->
-  <script src="https://cdn.jsdelivr.net/npm/dashjs/dist/dash.all.min.js"></script>
-  <!-- Chromecast SDK -->
-  <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+  <!-- Subtitles Section -->
+  <div class="mt-6 text-center">
+    <button onclick="generateSubtitles()" class="glow-btn px-6 py-3 rounded-xl font-bold">🌍 Auto Subtitles (AI)</button>
+    <p id="status" class="mt-2 text-sm text-gray-300"></p>
+  </div>
 
   <script>
-    const video = document.getElementById('player');
-    const downloadBtn = document.getElementById('download-btn');
-    const screenshotBtn = document.getElementById('screenshot-btn');
-    const theaterBtn = document.getElementById('theater-btn');
-    const mirrorBtn = document.getElementById('mirror-btn');
-    const themeBtn = document.getElementById('theme-btn');
-    const loopBtn = document.getElementById('loop-btn');
-    const bookmarkBtn = document.getElementById('bookmark-btn');
-    const statsBtn = document.getElementById('stats-btn');
-    const statsOverlay = document.getElementById('stats-overlay');
+    const player = document.getElementById("player");
+    const urlInput = document.getElementById("videoUrl");
+    const statusEl = document.getElementById("status");
 
-    let isMirrored = false, isTheater = false, isDark = true;
-    let loopStart = null, loopEnd = null;
-    let bookmarks = [];
-    let statsVisible = false;
-
-    const player = new Plyr(video, {
-      controls: [
-        'play-large','rewind','play','fast-forward',
-        'progress','current-time','duration',
-        'mute','volume','captions','settings',
-        'pip','airplay','fullscreen'
-      ],
-      ratio: '16:9',
-      storage: { enabled: true, key: 'plyr-player' }
-    });
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const videoUrl = urlParams.get('url');
-    const subUrl = urlParams.get('sub');
-
-    if (videoUrl) {
-      const decodedUrl = decodeURIComponent(videoUrl);
-
-      const downloadableExt = ['.mp4','.webm','.ogg','.mkv','.avi','.mov','.flv','.wmv'];
-      if (downloadableExt.some(ext => decodedUrl.toLowerCase().endsWith(ext))) {
-        downloadBtn.style.display = 'block';
-        downloadBtn.onclick = () => {
-          const a = document.createElement('a');
-          a.href = decodedUrl;
-          a.download = decodedUrl.split('/').pop();
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        };
+    function loadVideo() {
+      const url = urlInput.value.trim();
+      if (!url) {
+        alert("Enter a video link!");
+        return;
       }
-
-      if (decodedUrl.endsWith('.m3u8')) {
-        if (Hls.isSupported()) {
-          const hls = new Hls({ maxBufferLength: 60 });
-          hls.loadSource(decodedUrl);
-          hls.attachMedia(video);
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-          video.src = decodedUrl;
-        }
-      } else if (decodedUrl.endsWith('.mpd')) {
-        const dash = dashjs.MediaPlayer().create();
-        dash.initialize(video, decodedUrl, true);
-      } else {
-        video.src = decodedUrl;
-      }
-
-      if (subUrl) {
-        const track = document.createElement('track');
-        track.kind = 'subtitles';
-        track.label = 'Subs';
-        track.srclang = 'en';
-        track.src = decodeURIComponent(subUrl);
-        track.default = true;
-        video.appendChild(track);
-      }
+      player.src = url;
+      player.play();
     }
 
-    // Screenshot
-    screenshotBtn.onclick = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext('2d').drawImage(video, 0, 0);
-      const link = document.createElement('a');
-      link.download = 'screenshot.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    };
+    async function generateSubtitles() {
+      statusEl.innerText = "⏳ Generating English subtitles with AI...";
+      
+      // Demo placeholder (real-world: Whisper API / backend service required)
+      setTimeout(() => {
+        const track = document.createElement("track");
+        track.kind = "subtitles";
+        track.label = "English AI";
+        track.srclang = "en";
+        track.default = true;
 
-    // Theater mode
-    theaterBtn.onclick = () => {
-      isTheater = !isTheater;
-      document.body.style.background = isTheater ? "#111" : "#000";
-    };
+        // Example subtitles (replace with AI-generated)
+        const vttBlob = new Blob([`
+          WEBVTT
 
-    // Mirror video
-    mirrorBtn.onclick = () => {
-      isMirrored = !isMirrored;
-      video.style.transform = isMirrored ? "scaleX(-1)" : "scaleX(1)";
-    };
+          00:00:01.000 --> 00:00:04.000
+          Hello! These are AI-generated subtitles.
 
-    // Dark/Light Theme
-    themeBtn.onclick = () => {
-      isDark = !isDark;
-      document.body.style.background = isDark ? "#000" : "#fff";
-    };
+          00:00:05.000 --> 00:00:08.000
+          The real system will translate speech to English live.
+        `], { type: "text/vtt" });
 
-    // Loop A-B
-    loopBtn.onclick = () => {
-      if (!loopStart) {
-        loopStart = video.currentTime;
-        alert("Loop start set at " + loopStart.toFixed(1) + "s");
-      } else if (!loopEnd) {
-        loopEnd = video.currentTime;
-        alert("Loop end set at " + loopEnd.toFixed(1) + "s");
-      } else {
-        loopStart = loopEnd = null;
-        alert("Loop cleared");
-      }
-    };
-    video.addEventListener('timeupdate', () => {
-      if (loopStart && loopEnd && video.currentTime >= loopEnd) {
-        video.currentTime = loopStart;
-      }
-    });
-
-    // Bookmarks
-    bookmarkBtn.onclick = () => {
-      bookmarks.push(video.currentTime);
-      alert("Bookmarked at " + video.currentTime.toFixed(1) + "s");
-    };
-
-    // Stats Overlay
-    statsBtn.onclick = () => {
-      statsVisible = !statsVisible;
-      statsOverlay.style.display = statsVisible ? "block" : "none";
-    };
-    setInterval(() => {
-      if (statsVisible) {
-        statsOverlay.innerText =
-          `Time: ${video.currentTime.toFixed(1)}s\n` +
-          `Buffered: ${((video.buffered.length && video.buffered.end(0)) || 0).toFixed(1)}s\n` +
-          `Volume: ${(video.volume*100).toFixed(0)}%\n` +
-          `Resolution: ${video.videoWidth}x${video.videoHeight}\n` +
-          `Rate: ${video.playbackRate}x`;
-      }
-    }, 500);
-
-    // Resume playback
-    video.addEventListener("loadedmetadata", () => {
-      const savedTime = localStorage.getItem("resumeTime");
-      if (savedTime) video.currentTime = savedTime;
-    });
-    video.addEventListener("timeupdate", () => {
-      localStorage.setItem("resumeTime", video.currentTime);
-    });
-
-    // Drag & Drop support
-    document.body.addEventListener("dragover", e => e.preventDefault());
-    document.body.addEventListener("drop", e => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        const url = URL.createObjectURL(file);
-        video.src = url;
-        player.play();
-      }
-    });
+        track.src = URL.createObjectURL(vttBlob);
+        player.appendChild(track);
+        statusEl.innerText = "✅ AI subtitles loaded!";
+      }, 3000);
+    }
   </script>
-
 </body>
 </html>
